@@ -206,10 +206,32 @@ python3 rexec.py run pi3 "systemctl --user status rns-beacon"
 ```
 
 ### Chat
+
+Pi3's chat listener runs as a headless service (`rns-chat.service`) — always on,
+receive-only. For two-way interactive chat you need a live terminal on Pi3.
+
+**One-way** (ThinkStation → Pi3, Pi3 receives silently):
 ```bash
-python3 chat.py                      # listen mode (shows your address)
-python3 chat.py pi3                  # open chat to pi3
+mesh-chat
 ```
+
+**Two-way** (both sides can type):
+```bash
+# Terminal 1 — stop Pi3's headless service, run interactively
+ssh pi3
+systemctl --user stop rns-chat
+cd ~/reticulum-mesh && python3 chat.py
+
+# Terminal 2 — ThinkStation connects
+mesh-chat
+```
+
+**Restore Pi3 headless listener when done:**
+```bash
+cd ~/reticulum-mesh && python3 rexec.py run pi3 "systemctl --user start rns-chat"
+```
+
+**Pi3 chat address:** `7732e88875f9d08b726519725ab66755`
 
 ### Discover new nodes
 ```bash

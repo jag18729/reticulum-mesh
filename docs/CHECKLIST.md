@@ -42,10 +42,15 @@ Progress tracker across all phases. Check items off as they're completed.
 
 ### Verification
 - [x] Path to Pi3 found from ThinkStation (2s via Pi2 hub)
-- [x] `monitor.py` — Pi3 stats visible (cpu 4.5%, ram 27.4%, disk 27.4%)
+- [x] `monitor.py` — Pi3 stats visible (cpu 0.5%, ram 31%, disk 27%, temp 55.5°C)
 - [x] `rexec.py run pi3 uptime` — response received
+- [x] `rexec.py shell pi3` — interactive remote shell working
 - [x] `watchdog.py --peer pi3` — Beacon reachable, state file written
 - [x] `prometheus_exporter.py` — `mesh_beacon_up{node="pi3"} 1` at `:9877`
+- [x] `chat.py` — two-way encrypted chat ThinkStation ↔ Pi3 verified working
+- [x] `rns-chat.service` on Pi3 — headless receive-only listener, auto-restarts
+- [x] All aliases loaded — `mesh-dashboard`, `mesh-chat`, `pi3-uptime`, `mesh-shell` etc.
+- [x] MOTD updated with MESH section
 
 ### Remaining
 - [ ] Watchdog cron on ThinkStation
@@ -117,6 +122,20 @@ Progress tracker across all phases. Check items off as they're completed.
 - [ ] `node_exporter` on Pi3 — OS-level metrics (iowait, net, temps)
 - [ ] RNS link quality metrics — expose `mesh_link_rssi`, `mesh_hops` from announce packets
 - [ ] Grafana state timeline — `mesh_beacon_up` rolling 7d uptime view
+
+---
+
+## Known Fixes Applied (2026-03-16)
+
+> Bugs hit during live deploy — already patched in code.
+
+- **PEP 668 pip block** — Debian bookworm rejects pip without `--break-system-packages`. Fixed in `vandine-pi3.sh`.
+- **rexec path bug** — client waited for path to beacon hash then connected to rexec destination (different hash). Fixed: now explicitly requests path to rexec destination.
+- **Stale RNS shared instance** — `node.py` was running as shared instance with old config (no TCP interface). Fixed: `rnsd.service` systemd unit on ThinkStation + Pi2 ensures correct config on boot.
+- **Chat no-TTY crash** — listen mode called `input()` under nohup/systemd, got EOF, exited and tore down links. Fixed: receive-only loop when `stdin.isatty()` is False.
+- **Chat stale link rejection** — after ThinkStation disconnected (Ctrl+C), `active_link` stayed set on Pi3. New connections were immediately torn down. Fixed: incoming link replaces existing one.
+- **Two listeners conflict** — running `python3 chat.py` interactively on Pi3 while `rns-chat.service` was also running caused connection fights. Fix: `systemctl --user stop rns-chat` before interactive session.
+- **Bad peer entry** — `pi3-chat` saved with hash `pi3` (not a hex hash). Fixed: re-saved with correct hash.
 
 ---
 

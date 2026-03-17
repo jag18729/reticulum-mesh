@@ -41,8 +41,10 @@ def on_message(data, packet):
 def on_link_incoming(link):
     global active_link
     if active_link:
-        link.teardown()
-        return
+        try:
+            active_link.teardown()
+        except Exception:
+            pass
     active_link = link
     link.set_packet_callback(on_message)
     link.set_link_closed_callback(on_link_closed)

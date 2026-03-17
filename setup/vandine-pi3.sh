@@ -28,7 +28,8 @@ echo
 
 # ── 1. Dependencies ───────────────────────────────────────────────────
 echo "[1/4] Installing Python dependencies..."
-pip3 install --quiet --user rns psutil
+pip3 install --quiet --user --break-system-packages rns psutil \
+  || pip3 install --quiet --user rns psutil
 echo "      rns and psutil installed."
 
 # ── 2. Copy suite ─────────────────────────────────────────────────────

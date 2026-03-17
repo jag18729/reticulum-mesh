@@ -2,4 +2,13 @@ __pycache__/
 *.pyc
 .rns/
 *.log
+
+# Local RNS state — contains real IPs, identity keys, peer hashes
+.reticulum/
+.reticulum-mesh/
+
+# Secrets / local overrides
 .env
+*.env
+secrets.sh
+local.conf

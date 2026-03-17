@@ -31,6 +31,7 @@ import LXMF
 import asyncio
 import argparse
 import json
+import os
 import sys
 import time
 import websockets
@@ -148,8 +149,8 @@ def main():
     parser = argparse.ArgumentParser(description="LXMF ↔ OpenClaw bridge")
     parser.add_argument("--url", default="ws://127.0.0.1:18789",
                         help="OpenClaw WebSocket URL (default: ws://127.0.0.1:18789)")
-    parser.add_argument("--token", default="ea19a109b4f1289aed457264d1bbe8b28b811727a4a5f8d9",
-                        help="OpenClaw API token for Pi2")
+    parser.add_argument("--token", default=os.environ.get("OPENCLAW_TOKEN", ""),
+                        help="OpenClaw API token (or set OPENCLAW_TOKEN env var)")
     parser.add_argument("--agent", default="whale-watcher",
                         help="OpenClaw agent name (default: whale-watcher)")
     args = parser.parse_args()

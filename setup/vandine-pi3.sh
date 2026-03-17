@@ -1,20 +1,20 @@
 #!/usr/bin/env bash
-# vandine-pi3.sh — One-shot deploy script for Pi3 at Vandine.
+# vandine-pi3.sh — One-shot deploy script for a remote node.
 # Run as the normal user (not root). Sudo is used only where needed.
 #
 # What this does:
 #   1. Install RNS (rns) and psutil via pip
 #   2. Copy suite files into ~/reticulum-mesh/
-#   3. Write ~/.reticulum/config with TCPClientInterface → Pi2
+#   3. Write ~/.reticulum/config with TCPClientInterface → hub
 #   4. Create and enable systemd user services: rns-beacon + rns-rexec
 #
-# Usage: bash setup/vandine-pi3.sh
+# Usage: HUB_HOST=<hub_tailscale_ip> HUB_PORT=4242 bash setup/vandine-pi3.sh
 #        (run from the reticulum-mesh project root, or adjust SUITE_DIR below)
 
 set -euo pipefail
 
-PI2_HOST="100.111.113.35"
-PI2_PORT="4242"
+PI2_HOST="${HUB_HOST:?Set HUB_HOST to your hub node Tailscale IP}"
+PI2_PORT="${HUB_PORT:-4242}"
 SUITE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DEPLOY_DIR="$HOME/reticulum-mesh"
 RNS_CONFIG_DIR="$HOME/.reticulum"

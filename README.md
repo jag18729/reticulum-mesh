@@ -1,52 +1,41 @@
 # reticulum-mesh
 
-A communication layer for a two-site homelab — not just monitoring, but a full encrypted mesh that lets you reach, command, and talk to remote nodes over an independent channel that doesn't depend on the thing that might be broken.
+I built this because I needed a way to reach a remote node at my mom's house that didn't depend on the thing that might be broken. Tailscale is great until it isn't. SSH is great until you don't know the IP. Prometheus is great until the node goes silent and you're not sure if it's the node or the network.
 
-Built on [Reticulum Network Stack](https://reticulum.network/). Runs alongside Tailscale. When Tailscale has a bad day, this keeps working.
+This is a communication layer for my homelab — not just monitoring, but a full encrypted mesh where every node has a permanent cryptographic identity, I can shell into Pi3 at Vandine from my couch, get Telegram alerts when it goes dark, and eventually message it from my phone without a server in the middle.
+
+Built on [Reticulum Network Stack](https://reticulum.network/).
 
 ```
 Vandine                          Home
   Pi3 ──TCP out──► Pi2 :4242 ◄── ThinkStation
-  beacon                hub                monitor / rexec / watchdog
-  rexec              (rnsd)               prometheus_exporter
+  beacon              hub               monitor / rexec / watchdog
+  rexec             (rnsd)              prometheus_exporter
   chat
 ```
 
 ---
 
-## Why This Instead of the Usual Stack
+## Why I Built This Instead of Using the Usual Stack
 
 **The address is the cryptographic identity.**
-Pi3's address (`643b501d...`) is derived directly from its public key — no certificate authority, no DNS, no Tailscale account, no registration. It's cryptographically unforgeable and works anywhere on any transport. SSH + Prometheus requires knowing the IP and managing keys separately. This doesn't.
+Pi3's address is derived directly from its public key — no certificate authority, no DNS, no cloud account. It's permanent and unforgeable. SSH requires knowing the IP and managing keys separately. This doesn't.
 
 **It's genuinely transport-independent.**
-Most "mesh" tools are VPNs in disguise — they still phone home to a coordination server. Reticulum works over TCP, LoRa radio, serial, audio tones, I2C. The same `beacon.py` running over Tailscale TCP today works unchanged over a LoRa radio if the internet goes down. The code doesn't know or care what's underneath.
+Most "mesh" tools are VPNs that still phone home to a coordination server. Reticulum works over TCP, LoRa radio, serial, audio tones. The same `beacon.py` running over Tailscale TCP today works unchanged over a LoRa radio if the internet goes down. I didn't write transport-specific code — I wrote mesh code.
 
 **It's a full stack, not just monitoring.**
-Prometheus + Grafana + SSH scripts is useful but brittle. This gives you encrypted remote shell, dead man's switch with stateful alert/recovery, P2P chat, Prometheus metrics, and an AI pipeline hook — all sharing one identity file, one peer registry, one transport layer.
+Prometheus + Grafana + SSH scripts is useful but brittle. I wanted encrypted remote shell that works without knowing the IP, a dead man's switch with stateful alert/recovery, P2P chat, and Prometheus metrics — all sharing one identity file, one peer registry, one transport layer.
 
-**Phase 3 makes your phone a first-class mesh node.**
-[Sideband](https://github.com/markqvist/Sideband) + LXMF means the phone gets its own cryptographic address on the mesh. Not a push notification consumer — an actual peer. Text Pi3 directly, or text the bridge and have it routed to Telegram through whale-watcher. No Matrix server. No XMPP. No always-on middleman.
-
-**It fits exactly.**
-Zabbix and Nagios are designed for enterprise teams. This is ~800 lines of Python that does exactly what a 6-node two-site lab needs. When Pi3 moves to a new rack, nothing changes. When a new node is added, one script deploys it.
+**The phone becomes a first-class mesh node.**
+[Sideband](https://github.com/markqvist/Sideband) + LXMF means my phone gets its own cryptographic address on the mesh. Not a push notification consumer — an actual peer. I can text Pi3 directly, or text the bridge and have it routed through my AI pipeline to Telegram. No Matrix server. No always-on middleman.
 
 > Most homelab monitoring is surveillance of your infrastructure.
 > This is a communication layer for it.
 
 ---
 
-## Nodes
-
-| Node | Role | Tailscale IP |
-|---|---|---|
-| Pi2 | RNS hub (`rnsd :4242`) | 100.111.113.35 |
-| Pi3 | Remote node — Vandine | 100.119.105.10 |
-| ThinkStation | Control / monitoring | 100.126.232.42 |
-
----
-
-## Suite
+## What's In Here
 
 | Tool | What it does |
 |---|---|
@@ -55,13 +44,13 @@ Zabbix and Nagios are designed for enterprise teams. This is ~800 lines of Pytho
 | `rexec.py` | Remote shell and single-command execution |
 | `chat.py` | P2P encrypted chat between any two nodes |
 | `discover.py` | Listens for announces, builds a peer directory |
-| `watchdog.py` | Dead man's switch — Telegram alert if Pi3 goes dark |
-| `openclaw_bridge.py` | LXMF ↔ OpenClaw/Telegram gateway (Pi2) |
+| `watchdog.py` | Dead man's switch — Telegram alert if a node goes dark |
+| `openclaw_bridge.py` | LXMF ↔ OpenClaw/Telegram gateway |
 | `prometheus_exporter.py` | Exposes beacon metrics on `:9877` for Prometheus |
 
 ---
 
-## Quick Start
+## Setup
 
 ### Requirements
 
@@ -69,35 +58,42 @@ Zabbix and Nagios are designed for enterprise teams. This is ~800 lines of Pytho
 pip3 install --user --break-system-packages rns lxmf psutil websockets
 ```
 
-### Pi2 — hub (do once)
+### Hub node (do once)
 
 ```bash
+# Fill in your hub's listen port in config/rns-tcp-server.conf, then:
 cat config/rns-tcp-server.conf >> ~/.reticulum/config
-sudo ufw allow in on tailscale0 to any port 4242 proto tcp && sudo ufw deny 4242
-# install rnsd as a systemd user service — see docs/QUICKSTART.md
+
+# Restrict port to your VPN subnet
+sudo ufw allow in on tailscale0 to any port 4242 proto tcp
+sudo ufw deny 4242
+
+# Run rnsd as a persistent service
+# (see docs/QUICKSTART.md for the full unit file)
 systemctl --user enable --now rnsd
 ```
 
-### ThinkStation (do once)
+### Workstation / other clients (do once)
 
 ```bash
+# Fill in your hub IP and port in config/rns-tcp-client.conf, then:
 cat config/rns-tcp-client.conf >> ~/.reticulum/config
-systemctl --user enable --now rnsd   # see QUICKSTART for unit file
+systemctl --user enable --now rnsd
 ```
 
-### Pi3 / any remote node (do once)
+### Remote node — one-shot deploy
 
 ```bash
 git clone https://github.com/jag18729/reticulum-mesh.git
 cd reticulum-mesh
-bash setup/vandine-pi3.sh
+HUB_HOST=<hub_tailscale_ip> HUB_PORT=4242 bash setup/vandine-pi3.sh
 ```
 
 ### Register a peer
 
 ```bash
-python3 discover.py               # wait for node to appear, grab hash
-python3 monitor.py --add pi3 <hash>
+python3 discover.py                        # wait for node, grab hash
+python3 monitor.py --add mynode <hash>
 ```
 
 ---
@@ -105,52 +101,46 @@ python3 monitor.py --add pi3 <hash>
 ## Daily Usage
 
 ```bash
-# Fleet dashboard
-python3 monitor.py
-
-# Remote shell into Pi3
-python3 rexec.py shell pi3
-
-# Single remote command
-python3 rexec.py run pi3 "df -h /"
-
-# Chat
-python3 chat.py pi3
-
-# Watchdog (also runs as cron every 5m)
-python3 watchdog.py --peer pi3
-
-# Prometheus metrics
-curl localhost:9877/metrics
+python3 monitor.py                         # fleet dashboard
+python3 rexec.py shell mynode              # remote shell
+python3 rexec.py run mynode "df -h /"      # single command
+python3 chat.py mynode                     # chat
+python3 watchdog.py --peer mynode          # manual watchdog check
+curl localhost:9877/metrics                # Prometheus metrics
 ```
 
 ---
 
-## Watchdog Cron
+## Dead Man's Switch
 
 ```bash
 # crontab -e
 */5 * * * * cd ~/reticulum-mesh && python3 watchdog.py >> ~/.reticulum-mesh/watchdog.log 2>&1
 ```
 
-Fires a Telegram alert via OpenClaw after 3 consecutive failures. Sends recovery alert when back online.
+Fires a Telegram alert via OpenClaw after N consecutive failures. Sends recovery when back online. State persisted to avoid repeat alerts.
+
+Set your OpenClaw token:
+```bash
+export OPENCLAW_TOKEN=your_token_here
+```
 
 ---
 
-## Sideband (Phase 3)
+## Sideband — Phone as Mesh Node (Phase 3)
 
-[Sideband](https://github.com/markqvist/Sideband) connects your phone to the mesh over the same TCP interface. Messages route through `openclaw_bridge.py` on Pi2 → whale-watcher → Telegram.
+[Sideband](https://github.com/markqvist/Sideband) connects a phone directly to the mesh over the same TCP interface. Messages route through `openclaw_bridge.py` → whale-watcher → Telegram.
 
-Config in Sideband: `TCP Client` → `100.111.113.35:4242`
+Config in Sideband: `TCP Client` → `<hub_ip>:4242`
 
 ---
 
 ## Docs
 
-- [`docs/QUICKSTART.md`](docs/QUICKSTART.md) — setup, commands, tips, service management
+- [`docs/QUICKSTART.md`](docs/QUICKSTART.md) — full setup, service management, tips
 - [`docs/CHECKLIST.md`](docs/CHECKLIST.md) — phase-by-phase progress tracker
-- [`docs/ROADMAP.md`](docs/ROADMAP.md) — phased plan, live node registry, future considerations
-- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — transport diagram, data flows, RNS config reference
+- [`docs/ROADMAP.md`](docs/ROADMAP.md) — phased plan and future considerations
+- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — transport diagram and data flows
 
 ---
 
@@ -170,24 +160,27 @@ reticulum-mesh/
 │   ├── common.py          # shared RNS helpers
 │   └── identity.py        # persistent identity + peer registry
 ├── config/
-│   ├── rns-tcp-client.conf
-│   └── rns-tcp-server.conf
+│   ├── rns-tcp-client.conf   # fill in hub IP/port
+│   └── rns-tcp-server.conf   # fill in hub port
 ├── setup/
-│   └── vandine-pi3.sh     # one-shot remote node deploy
+│   └── vandine-pi3.sh        # one-shot remote node deploy
 └── docs/
     ├── QUICKSTART.md
+    ├── CHECKLIST.md
     ├── ROADMAP.md
     └── ARCHITECTURE.md
 ```
 
 ---
 
-## State
+## Important
 
 ```
-~/.reticulum/config           — RNS interface config
-~/.reticulum-mesh/identity    — permanent mesh keypair (back this up)
+~/.reticulum-mesh/identity    — permanent mesh keypair
 ~/.reticulum-mesh/peers.json  — name → hash registry
+~/.reticulum/config           — RNS interface config (contains your hub IP)
 ```
 
-> **Back up `~/.reticulum-mesh/identity`** on every node. Losing it means losing your mesh address permanently.
+> **Back up `~/.reticulum-mesh/identity` on every node.** It is the node's permanent address on the mesh. Losing it means losing the address permanently — all saved peer entries pointing to it become stale.
+>
+> **Never commit `~/.reticulum/config`** — it contains your real network IPs.

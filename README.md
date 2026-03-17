@@ -1,13 +1,38 @@
 # reticulum-mesh
 
-Secure, encrypted mesh network across two physical sites using [Reticulum Network Stack](https://reticulum.network/). Runs alongside Tailscale as an always-on secondary channel — fleet monitoring, remote shell, P2P chat, and Telegram alerts over an independent encrypted layer.
+A communication layer for a two-site homelab — not just monitoring, but a full encrypted mesh that lets you reach, command, and talk to remote nodes over an independent channel that doesn't depend on the thing that might be broken.
+
+Built on [Reticulum Network Stack](https://reticulum.network/). Runs alongside Tailscale. When Tailscale has a bad day, this keeps working.
 
 ```
 Vandine                          Home
   Pi3 ──TCP out──► Pi2 :4242 ◄── ThinkStation
   beacon                hub                monitor / rexec / watchdog
   rexec              (rnsd)               prometheus_exporter
+  chat
 ```
+
+---
+
+## Why This Instead of the Usual Stack
+
+**The address is the cryptographic identity.**
+Pi3's address (`643b501d...`) is derived directly from its public key — no certificate authority, no DNS, no Tailscale account, no registration. It's cryptographically unforgeable and works anywhere on any transport. SSH + Prometheus requires knowing the IP and managing keys separately. This doesn't.
+
+**It's genuinely transport-independent.**
+Most "mesh" tools are VPNs in disguise — they still phone home to a coordination server. Reticulum works over TCP, LoRa radio, serial, audio tones, I2C. The same `beacon.py` running over Tailscale TCP today works unchanged over a LoRa radio if the internet goes down. The code doesn't know or care what's underneath.
+
+**It's a full stack, not just monitoring.**
+Prometheus + Grafana + SSH scripts is useful but brittle. This gives you encrypted remote shell, dead man's switch with stateful alert/recovery, P2P chat, Prometheus metrics, and an AI pipeline hook — all sharing one identity file, one peer registry, one transport layer.
+
+**Phase 3 makes your phone a first-class mesh node.**
+[Sideband](https://github.com/markqvist/Sideband) + LXMF means the phone gets its own cryptographic address on the mesh. Not a push notification consumer — an actual peer. Text Pi3 directly, or text the bridge and have it routed to Telegram through whale-watcher. No Matrix server. No XMPP. No always-on middleman.
+
+**It fits exactly.**
+Zabbix and Nagios are designed for enterprise teams. This is ~800 lines of Python that does exactly what a 6-node two-site lab needs. When Pi3 moves to a new rack, nothing changes. When a new node is added, one script deploys it.
+
+> Most homelab monitoring is surveillance of your infrastructure.
+> This is a communication layer for it.
 
 ---
 

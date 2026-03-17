@@ -123,7 +123,8 @@ Config in Sideband: `TCP Client` → `100.111.113.35:4242`
 ## Docs
 
 - [`docs/QUICKSTART.md`](docs/QUICKSTART.md) — setup, commands, tips, service management
-- [`docs/ROADMAP.md`](docs/ROADMAP.md) — phased plan, live node registry, remaining to-do
+- [`docs/CHECKLIST.md`](docs/CHECKLIST.md) — phase-by-phase progress tracker
+- [`docs/ROADMAP.md`](docs/ROADMAP.md) — phased plan, live node registry, future considerations
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — transport diagram, data flows, RNS config reference
 
 ---

@@ -89,8 +89,18 @@ def listen_mode(identity):
     destination.set_link_established_callback(on_link_incoming)
     destination.announce()
     print(f"Listening at: {RNS.prettyhexrep(destination.hash)}")
-    print("Waiting for connection... Type /quit to exit.\n")
-    input_loop()
+
+    if sys.stdin.isatty():
+        print("Waiting for connection... Type /quit to exit.\n")
+        input_loop()
+    else:
+        # No TTY (e.g. nohup / systemd) — stay alive, receive-only
+        print("Waiting for connection (receive-only mode)...\n")
+        try:
+            while True:
+                time.sleep(1)
+        except KeyboardInterrupt:
+            pass
 
 
 def connect_mode(identity, dest_hash_hex):

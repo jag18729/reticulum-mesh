@@ -11,7 +11,7 @@ Pick up and go reference. No fluff.
 ```bash
 git clone https://github.com/jag18729/reticulum-mesh.git
 cd reticulum-mesh
-pip3 install --user rns lxmf psutil websockets
+pip3 install --user --break-system-packages rns lxmf psutil websockets
 ```
 
 ---
@@ -26,10 +26,23 @@ cat config/rns-tcp-server.conf >> ~/.reticulum/config
 sudo ufw allow in on tailscale0 to any port 4242 proto tcp
 sudo ufw deny 4242
 
-# 3. Restart RNS
-systemctl --user restart rnsd
-# or if not running yet:
-rnsd --daemon
+# 3. Install and start rnsd as a persistent systemd service
+mkdir -p ~/.config/systemd/user
+cat > ~/.config/systemd/user/rnsd.service << 'EOF'
+[Unit]
+Description=Reticulum Network Stack Daemon
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+ExecStart=/home/rafaeljg/.local/bin/rnsd
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target
+EOF
+systemctl --user daemon-reload && systemctl --user enable --now rnsd
 ```
 
 ---
@@ -37,9 +50,35 @@ rnsd --daemon
 ## ThinkStation — Client Setup (do once)
 
 ```bash
-# Append client interface to RNS config
+# 1. Append client interface to RNS config
 cat config/rns-tcp-client.conf >> ~/.reticulum/config
+
+# 2. Install rnsd as a persistent systemd service
+mkdir -p ~/.config/systemd/user
+cat > ~/.config/systemd/user/rnsd.service << 'EOF'
+[Unit]
+Description=Reticulum Network Stack Daemon (ThinkStation)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+ExecStart=/home/johnmarston/.local/bin/rnsd
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target
+EOF
+systemctl --user daemon-reload && systemctl --user enable --now rnsd
+
+# Verify: should show ESTAB connection to 100.111.113.35:4242
+ss -tnp | grep 4242
 ```
+
+> **Why rnsd as a service?** All suite tools (monitor, rexec, watchdog, chat) connect to a
+> shared RNS instance. If that instance was started before the TCP interface was in the config,
+> it won't route to Pi3. Running rnsd as a systemd service ensures it always starts with the
+> correct config and auto-restarts on crash.
 
 ---
 
@@ -52,17 +91,23 @@ bash setup/vandine-pi3.sh
 # installs deps, writes ~/.reticulum/config, starts beacon + rexec as systemd services
 ```
 
+> **Note on Pi3 relocation:** Pi3 is currently on WiFi at Vandine (192.168.2.233 / Tailscale
+> 100.119.105.10). When it moves to its permanent rack location and switches to Ethernet, the
+> IP will change but the Tailscale IP and mesh identity stay the same — no reconfiguration
+> needed on ThinkStation or Pi2.
+
 ---
 
 ## Register Pi3 on ThinkStation (do once, after Pi3 is up)
 
 ```bash
-# Discover Pi3's hash
-python3 discover.py
-# Wait ~30s, Ctrl+C when Pi3 appears, copy its hash
+cd ~/reticulum-mesh
 
-# Save it
-python3 monitor.py --add pi3 <hash>
+# Discover Pi3's hash (wait ~30s, Ctrl+C when it appears)
+python3 discover.py
+
+# Save it (Pi3's actual beacon hash)
+python3 monitor.py --add pi3 643b501dce6bcd85971bab5f26a3fbbd
 
 # Verify
 python3 monitor.py
@@ -83,7 +128,6 @@ crontab -e
 ## OpenClaw Bridge on Pi2 (do once)
 
 ```bash
-# Create systemd user service
 mkdir -p ~/.config/systemd/user
 cat > ~/.config/systemd/user/openclaw-bridge.service << 'EOF'
 [Unit]
@@ -109,15 +153,29 @@ systemctl --user enable --now openclaw-bridge.service
 ## Prometheus Exporter (ThinkStation — do once)
 
 ```bash
-# Run as a service or add to a tmux session
-python3 prometheus_exporter.py
+# Run as a service
+cat > ~/.config/systemd/user/mesh-prometheus.service << 'EOF'
+[Unit]
+Description=Reticulum Mesh Prometheus Exporter
+After=rnsd.service
+
+[Service]
+ExecStart=python3 /home/johnmarston/reticulum-mesh/prometheus_exporter.py
+WorkingDirectory=/home/johnmarston/reticulum-mesh
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=default.target
+EOF
+systemctl --user daemon-reload && systemctl --user enable --now mesh-prometheus
 
 # Add to Pi1's /etc/prometheus/prometheus.yml:
 # scrape_configs:
 #   - job_name: 'reticulum_mesh'
 #     scrape_interval: 60s
 #     static_configs:
-#       - targets: ['<thinkstation_tailscale_ip>:9877']
+#       - targets: ['100.126.232.42:9877']
 ```
 
 ---
@@ -126,6 +184,7 @@ python3 prometheus_exporter.py
 
 ### Fleet dashboard
 ```bash
+cd ~/reticulum-mesh
 python3 monitor.py                   # all saved peers
 python3 monitor.py pi3               # specific node
 python3 monitor.py --interval 10     # faster refresh
@@ -195,14 +254,32 @@ journalctl --user -u rns-beacon -f
 journalctl --user -u rns-rexec -f
 
 # Get Pi3's beacon address
-journalctl --user -u rns-beacon --no-pager | grep "Address:"
+python3 -c "
+import sys; sys.path.insert(0,'.')
+import RNS
+from lib.identity import load_or_create_identity
+from lib.common import make_destination
+RNS.Reticulum()
+id = load_or_create_identity()
+d = make_destination(id, 'beacon')
+print(RNS.prettyhexrep(d.hash))
+"
 ```
 
 ## Service Management (Pi2)
 
 ```bash
-systemctl --user status openclaw-bridge
+systemctl --user status rnsd openclaw-bridge
+journalctl --user -u rnsd -f
 journalctl --user -u openclaw-bridge -f
+```
+
+## Service Management (ThinkStation)
+
+```bash
+systemctl --user status rnsd
+journalctl --user -u rnsd -f
+ss -tnp | grep 4242    # verify connected to Pi2
 ```
 
 ---
@@ -230,16 +307,19 @@ Add that address as a contact in Sideband. Messages go → bridge → whale-watc
 ## Tips
 
 **Node not appearing in discover?**
-Check that `rnsd` is running on Pi2 and both nodes have the TCP client interface configured.
+Confirm rnsd is running on both Pi2 and the local node, and the TCP interface is loaded:
 ```bash
-# On any node
-rnsd --version     # confirm rns is installed
-cat ~/.reticulum/config | grep -A4 "TCP"
+systemctl --user status rnsd
+ss -tnp | grep 4242    # should show ESTAB to 100.111.113.35:4242
 ```
 
-**Path not found errors in monitor/watchdog?**
-RNS needs to hear an announce from the target node first. Start (or restart) the beacon on
-the remote node, then wait up to 60s for the path to propagate.
+**"No path to destination" in rexec/monitor?**
+rnsd may have started with the old config (before TCP interface was added). Restart it:
+```bash
+systemctl --user restart rnsd
+sleep 5
+python3 rexec.py run pi3 hostname
+```
 
 **Watchdog fires false alerts?**
 Increase `--threshold` or check that the poll timeout isn't too short for your link latency:
@@ -248,18 +328,22 @@ python3 watchdog.py --threshold 5 --timeout 20
 ```
 
 **Prometheus shows no data?**
-Run `prometheus_exporter.py` manually first and hit `curl localhost:9877/metrics` to confirm
-peers are resolving. All peers must be registered in `~/.reticulum-mesh/peers.json` first.
-
-**rexec shell hangs?**
-The remote rexec server may not be running. Check:
+Run `prometheus_exporter.py` manually first and check:
 ```bash
-python3 rexec.py run pi3 echo ok      # quick connectivity test
+curl localhost:9877/metrics
+# All peers must be registered in ~/.reticulum-mesh/peers.json first
+```
+
+**Pi3 moving to new location?**
+Tailscale IP (100.119.105.10) and mesh identity stay the same. No changes needed on
+ThinkStation or Pi2. After physical move, just verify:
+```bash
+tailscale ping 100.119.105.10
+python3 rexec.py run pi3 hostname
 ```
 
 **Lost Pi3's identity file?**
-Pi3 will generate a new identity on next start and its hash will change.
-Re-discover and update peers.json on ThinkStation:
+Pi3 generates a new identity and its hash changes. Re-discover and update:
 ```bash
 python3 discover.py --save
 python3 monitor.py --add pi3 <new_hash>
@@ -273,15 +357,26 @@ cp ~/.reticulum-mesh/identity ~/.reticulum-mesh/identity.bak
 
 ---
 
+## Known Nodes
+
+| Name | Tailscale IP | Beacon Hash | Location |
+|---|---|---|---|
+| Pi2 (hub) | 100.111.113.35 | — | Home |
+| Pi3 | 100.119.105.10 | `643b501dce6bcd85971bab5f26a3fbbd` | Vandine (moving) |
+| ThinkStation | 100.126.232.42 | — | Home |
+
+---
+
 ## File Locations
 
 | Path | What |
 |---|---|
 | `~/.reticulum/config` | RNS interface config |
-| `~/.reticulum-mesh/identity` | Your node's permanent mesh keypair |
+| `~/.reticulum-mesh/identity` | Node's permanent mesh keypair |
 | `~/.reticulum-mesh/peers.json` | Saved peer name → hash registry |
 | `~/.reticulum-mesh/watchdog-state.json` | Watchdog failure counters |
 | `~/.reticulum-mesh/watchdog.log` | Watchdog cron output |
+| `~/.config/systemd/user/rnsd.service` | rnsd autostart (ThinkStation + Pi2) |
 | `~/.config/systemd/user/rns-beacon.service` | Beacon systemd unit (Pi3) |
 | `~/.config/systemd/user/rns-rexec.service` | Rexec systemd unit (Pi3) |
 | `~/.config/systemd/user/openclaw-bridge.service` | Bridge systemd unit (Pi2) |

@@ -43,7 +43,7 @@ and internet outages at individual sites.
 
 ---
 
-## Phase 2 — Two-Site Mesh (Vandine) ✅ Complete
+## Phase 2 — Two-Site Mesh (Vandine) ✅ Complete (2026-03-16)
 
 **Goal:** Extend the mesh to Vandine. Pi3 is an always-on remote node — monitored,
 accessible, and wired into the OpenClaw/Telegram alert pipeline.
@@ -63,21 +63,36 @@ No port-forwarding needed at either site. Pi3 dials outbound to Pi2's Tailscale 
 | Dead man's switch | `watchdog.py` | ThinkStation cron | ✅ |
 | LXMF ↔ OpenClaw bridge | `openclaw_bridge.py` | Pi2 systemd | ✅ |
 | Beacon → Prometheus | `prometheus_exporter.py` | ThinkStation | ✅ |
+| rnsd systemd service | `rnsd.service` | ThinkStation + Pi2 | ✅ |
+
+### Live Node Registry
+
+| Node | Tailscale IP | Beacon Hash | Status |
+|---|---|---|---|
+| Pi2 (hub) | 100.111.113.35 | — | ✅ rnsd :4242, transport enabled |
+| Pi3 | 100.119.105.10 | `643b501dce6bcd85971bab5f26a3fbbd` | ✅ beacon + rexec running, WiFi (Vandine) — **pending move to rack/Ethernet** |
+| ThinkStation | 100.126.232.42 | — | ✅ rnsd service, connected to Pi2 |
+
+> **Pi3 relocation note:** Pi3 is currently on WiFi at Vandine (192.168.2.233). It will move
+> to a permanent rack location on Ethernet once the site is fully set up. Tailscale IP and mesh
+> identity hash will not change — no reconfiguration needed.
 
 ### Phase 2 Deployment Checklist
 
 ```
-[ ] Pi2: append config/rns-tcp-server.conf to ~/.reticulum/config
-[ ] Pi2: sudo ufw allow in on tailscale0 to any port 4242 proto tcp
-[ ] Pi2: sudo ufw deny 4242
-[ ] Pi2: systemctl --user restart rnsd
-[ ] ThinkStation: append config/rns-tcp-client.conf to ~/.reticulum/config
-[ ] Pi3: git clone repo, bash setup/vandine-pi3.sh
-[ ] ThinkStation: python3 discover.py  →  grab Pi3 hash
-[ ] ThinkStation: python3 monitor.py --add pi3 <hash>
+[x] Pi2: append config/rns-tcp-server.conf to ~/.reticulum/config
+[x] Pi2: sudo ufw allow in on tailscale0 to any port 4242 proto tcp
+[x] Pi2: sudo ufw deny 4242
+[x] Pi2: rnsd running as systemd user service
+[x] ThinkStation: append config/rns-tcp-client.conf to ~/.reticulum/config
+[x] ThinkStation: rnsd running as systemd user service (auto-connects to Pi2 on boot)
+[x] Pi3: git clone repo, ran deploy manually (pip PEP 668 workaround applied)
+[x] Pi3: rns-beacon.service + rns-rexec.service running
+[x] ThinkStation: python3 discover.py  →  Pi3 hash captured
+[x] ThinkStation: python3 monitor.py --add pi3 643b501dce6bcd85971bab5f26a3fbbd
 [ ] ThinkStation cron: */5 * * * * cd ~/reticulum-mesh && python3 watchdog.py >> ~/.reticulum-mesh/watchdog.log 2>&1
 [ ] Pi2: install openclaw-bridge.service (see openclaw_bridge.py docstring)
-[ ] ThinkStation: run prometheus_exporter.py as a service
+[ ] ThinkStation: mesh-prometheus.service (see QUICKSTART)
 [ ] Pi1: add ThinkStation:9877 scrape target to prometheus.yml
 ```
 

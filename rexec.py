@@ -103,6 +103,10 @@ def run_remote(dest_hash_hex: str, cmd: str) -> dict | None:
         remote_id, RNS.Destination.OUT, RNS.Destination.SINGLE, APP_NAME, "rexec"
     )
 
+    if not wait_for_path(destination.hash):
+        print("No path to rexec destination.")
+        return None
+
     result_box = [None]
     done = threading.Event()
 
